@@ -1,2 +1,30 @@
 check_offers_in_wantlist:
-  description: Checks offers in Wantlist
+  description: Check offers in Wantlist and notifies given mobile device name
+  fields:
+    device_name:
+      name: "Device Name"
+      description: "Device name of your mobile device."
+      example: "pixel6"
+      required: true
+      selector:
+        text:
+    discogs_token:
+      name: "Discogs Token"
+      description: "Discogs Personal Access Token"
+      required: true
+      selector:
+        text:
+    min_sleeve_condition:
+      name: "Minimal Sleeve Condition"
+      description: "The minimal accepted sleeve condition. (M > NM > VG+ > VG > G+ > G > F > P > Not Graded > Generic > No Cover)"
+      example: "No Cover"
+      required: false
+      selector:
+        text:
+    min_media_condition:
+      name: "Minimal Media Condition"
+      description: "The minimal accepted media condition. (M > NM > VG+ > VG > G+ > G > F > P > Not Graded)"
+      example: "No Cover"
+      required: false
+      selector:
+        text:

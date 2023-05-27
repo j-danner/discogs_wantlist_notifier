@@ -15,14 +15,14 @@ _LOGGER = logging.getLogger(__name__)
 
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the sync service example component."""
-    def my_service(call: ServiceCall) -> None:
+    def check_offers_in_wantlist(call: ServiceCall) -> None:
         """My first service."""
         _LOGGER.info('Received data', call.data)
         
-        device = call.data.get("device", None)
-        token = call.data.get("token", None)
-        min_sleeve_cond = data.get("min_sleeve_condition", 'No Cover')
-        min_media_cond = data.get("min_media_condition", 'G')
+        device = call.data.get("device_name", None)
+        token = call.data.get("discogs_token", None)
+        min_sleeve_cond = call.data.get("min_sleeve_condition", 'No Cover')
+        min_media_cond = call.data.get("min_media_condition", 'G')
 
         ## (1) check for good offers
         #good_offers, max_price_missing = check_offers_in_wantlist(token, min_media_condition, min_sleeve_condition, interactive=False)
@@ -56,7 +56,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         #        device=device)
 
     # Register our service with Home Assistant.
-    hass.services.register(DOMAIN, 'check_offers_in_wantlist', my_service)
+    hass.services.register(DOMAIN, 'check_offers_in_wantlist', check_offers_in_wantlist)
 
     # Return boolean to indicate that initialization was successfully.
     return True
