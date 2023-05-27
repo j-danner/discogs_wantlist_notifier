@@ -39,8 +39,8 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         for offer in good_offers:
             item = offer['wantlist_item'].release
-            title = f'Good offer found for {item.title} -- { list(i.title for i in item.tracklist) }'
-            msg = f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
+            title = f'Good offer found for {a.name[0] for a in item.artists[0].name} - {item.title}'
+            msg = f'tracklist: { list(i.title for i in item.tracklist) }\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
             _LOGGER.info(title + ' -- ' + msg)
             send_notification(title=title, msg=msg, url=item.url, device=device)
         
@@ -49,7 +49,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if len(max_price_missing) > 0:
             send_notification(
                 title=f'Found items without max price!',
-                msg=f'Please set a max-price for the following items: {max_price_missing}',
+                msg=f'Please set a max-price for the following items: { str(max_price_missing).replace("<",""),replace(">","") }',
                 url=item.url,
                 device=device)
         
