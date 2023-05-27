@@ -1,3 +1,4 @@
 {
-  "name": "Discogs Wantlist Notifier"
+  "name": "Discogs Wantlist Notifier",
+  "iot_class": ["Cloud Polling"]
 }
