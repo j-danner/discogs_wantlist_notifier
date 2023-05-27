@@ -16,13 +16,13 @@ _LOGGER = logging.getLogger(__name__)
 def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the sync service example component."""
     def check_offers_in_wantlist(call: ServiceCall) -> None:
-        """My first service."""
+        """Check offers in Discogs Wantlist."""
         _LOGGER.info('Received data', call.data)
         
         device = call.data.get("device_name", None)
         token = call.data.get("discogs_token", None)
-        min_sleeve_cond = call.data.get("min_sleeve_condition", 'No Cover')
-        min_media_cond = call.data.get("min_media_condition", 'G')
+        min_sleeve_condition = call.data.get("min_sleeve_condition", 'No Cover')
+        min_media_condition = call.data.get("min_media_condition", 'G')
 
         ## (1) check for good offers
         #good_offers, max_price_missing = check_offers_in_wantlist(token, min_media_condition, min_sleeve_condition, interactive=False)
@@ -35,7 +35,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
             hass.services.call('notify', f'mobile_app_{device}', service_data, False)
         
 
-        send_notification(f'Good offer for blablabla found! (token={token})\n media condition: {min_media_condition}, sleeve condition: {min_sleeve_condition}', "https://www.discogs.com/release/484125-Men-At-Work-Down-Under?ev=drec", device)
+        send_notification(f'Test Title!', f'Test message! (media condition: {min_media_condition}, sleeve condition: {min_sleeve_condition})', "https://www.discogs.com/release/484125-Men-At-Work-Down-Under?ev=drec", device)
 
         #for offer in good_offers:
         #    item = offer['wantlist_item'].release
