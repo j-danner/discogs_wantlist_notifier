@@ -1,0 +1,10 @@
+{
+  "domain": "discogs_wantlist_notifier",
+  "name": "Discogs Wantlist Notifier",
+  "codeowners": ["@j-danner"],
+  "dependencies": [],
+  "documentation": "https://github.com/j-danner/discogs_wantlist_notifier/tree/master/custom_components/discogs_wantlist_notifier/",
+  "iot_class": "cloud_polling",
+  "requirements": [],
+  "version": "0.1.0"
+}
