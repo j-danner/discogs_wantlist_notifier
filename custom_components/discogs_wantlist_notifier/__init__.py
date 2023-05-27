@@ -39,8 +39,8 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         for offer in good_offers:
             item = offer['wantlist_item'].release
-            title = f'Good offer found for {item.title} -- {item.tracklist}',
-            msg = f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'marketplace stats: {get_price_stats(item.id, url=item.url)}\n'
+            title = f'Good offer found for {item.title} -- { list(i.title for i in item.tracklist) }'
+            msg = f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
             _LOGGER.info(title + ' -- ' + msg)
             send_notification(title=title, msg=msg, url=item.url, device=device)
         
@@ -53,7 +53,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 url=item.url,
                 device=device)
         
-        _LOGGER.info('notifications on missing pricemissing prices sent')
+        _LOGGER.info('notifications on missing prices sent')
 
     # Register our service with Home Assistant.
     hass.services.register(DOMAIN, 'check_offers_in_wantlist', check_offers_in_wantlist_service)
