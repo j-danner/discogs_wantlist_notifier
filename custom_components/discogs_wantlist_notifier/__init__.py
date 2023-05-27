@@ -6,7 +6,7 @@ import logging
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.typing import ConfigType
 
-from .discogs_wantlist_watcher.wantlist_watcher import *
+from wantlist_watcher import *
 
 # The domain of your component. Should be equal to the name of your component.
 DOMAIN = "discogs_wantlist_notifier"

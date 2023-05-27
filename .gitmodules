@@ -1,3 +1,0 @@
-[submodule "custom_component/discogs_wantlist_watcher/discogs_wantlist_watcher"]
-	path = custom_components/discogs_wantlist_notifier/discogs_wantlist_watcher
-	url = https://github.com/j-danner/discogs_wantlist_watcher
