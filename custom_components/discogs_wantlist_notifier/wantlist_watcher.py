@@ -156,7 +156,7 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
         url = f'https://www.discogs.com/release/{item_id}'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
     page = requests.get(url, headers=headers)
-    soup = BeautifulSoup(page.text, 'lxml')
+    soup = BeautifulSoup(page.text, 'html.parser')
     #get all setter items
     stats = soup.find_all('section', id='release-stats')[0]
     vals = stats.find_all('span', class_='') #should give [rating, min, med, max], if previuosly sold!
@@ -292,7 +292,7 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
             url = f'https://www.discogs.com/sell/release/{item_id}?sort=price%2Casc&limit=250&ev=rb&page={pg}'
             headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
             page = requests.get(url, headers=headers)
-            soup = BeautifulSoup(page.text, 'lxml')
+            soup = BeautifulSoup(page.text, 'html.parser')
             #get all setter items
             offers_on_page = soup.find_all('tr', class_='shortcut_navigable',attrs={'data-release-id':True})
             for offer in offers_on_page:
