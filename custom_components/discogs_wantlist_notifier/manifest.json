@@ -6,6 +6,5 @@
   "documentation": "https://github.com/j-danner/discogs_wantlist_notifier",
   "issue_tracker": "https://github.com/j-danner/discogs_wantlist_notifier/issues",
   "iot_class": "cloud_polling",
-  "dependencies": [],
   "version": "0.1.0"
 }
