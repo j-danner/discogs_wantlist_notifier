@@ -203,8 +203,10 @@ def parse_item_html(item):
         sleeve_condition = Condition('No Cover')
     #parse media condition
     media_condition = Condition( item.find_all('span', class_='has-tooltip')[0].parent.contents[0].strip() )
+    #parse item-offer-url
+    url = 'https://www.discogs.com'+ item.find_all('a', class_='item_description_title')[0].attrs['href']
     #return all collected data
-    return {'item_id': item.attrs['data-release-id'], 'media_condition': media_condition, 'sleeve_condition': sleeve_condition, 'price': price_with_shipping, 'price_no_shipping': price_no_shipping}
+    return {'item_id': item.attrs['data-release-id'], 'media_condition': media_condition, 'sleeve_condition': sleeve_condition, 'price': price_with_shipping, 'price_no_shipping': price_no_shipping, 'url': url}
 
 def change_price(wantlist_item, new_price:float):
     wantlist_item.notes=f'max price: €{new_price:.2f}'

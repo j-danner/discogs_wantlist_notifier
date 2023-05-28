@@ -29,20 +29,18 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         min_media_condition = Condition( call.data.get("min_media_condition", 'G') )
         
         _LOGGER.info('Received data')
-
         ## (1) check for good offers
         good_offers, max_price_missing = check_offers_in_wantlist(token, min_media_condition, min_sleeve_condition)
         
         _LOGGER.info('offers in wantlist checked')
 
         ## (2) send notifications to 'device' about good offers
-
         for offer in good_offers:
             item = offer['wantlist_item'].release
             title = f'Good offer found for {item.artists[0].name} - {item.title}'
             msg = f'tracklist: { list(i.title for i in item.tracklist) }\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
             _LOGGER.info(title + ' -- ' + msg)
-            send_notification(title=title, msg=msg, url=item.url, device=device)
+            send_notification(title=title, msg=msg, url=offer['url'], device=device)
         
         _LOGGER.info('notifications on offers sent')
 
