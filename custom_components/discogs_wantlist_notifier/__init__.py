@@ -47,7 +47,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if len(max_price_missing) > 0:
             send_notification(
                 title=f'Found items without max price!',
-                msg=f'Please set a max-price for the following items: { str(max_price_missing).replace("<",""),replace(">","") }',
+                msg=f'Please set a max-price for the following items: { str(max_price_missing).replace("<","").replace(">","") }',
                 url=item.url,
                 device=device)
         
