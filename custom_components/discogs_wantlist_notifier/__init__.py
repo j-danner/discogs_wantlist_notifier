@@ -20,7 +20,10 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
         #helper function to send notifications to given device, clicking on notification opens given url
         def send_notification(title:str, msg:str, url:str, device:str) -> None:
-            service_data = {"message": msg, "title": title, "data": {"notification_icon": "mdi:album", "group": "Discogs Wantlist Watcher", "color": "black", "clickAction": url}}
+            if url!=None:
+                service_data = {"message": msg, "title": title, "data": {"notification_icon": "mdi:album", "group": "Discogs Wantlist Watcher", "color": "black", "clickAction": url}}
+            else:
+                service_data = {"message": msg, "title": title, "data": {"notification_icon": "mdi:album", "group": "Discogs Wantlist Watcher", "color": "black"}}
             hass.services.call('notify', f'mobile_app_{device}', service_data, False)
         
         device = call.data.get("device_name", None)
@@ -48,7 +51,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
             send_notification(
                 title=f'Found items without max price!',
                 msg=f'Please set a max-price for the following items: { str(max_price_missing).replace("<","").replace(">","") }',
-                url=item.url,
+                url=None,
                 device=device)
         
         _LOGGER.info('notifications on missing prices sent')
