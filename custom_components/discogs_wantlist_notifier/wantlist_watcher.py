@@ -137,8 +137,6 @@ def get_redirected_url(url:str) -> str:
     chrome_options.add_argument("--headless")  # Run in headless mode, no browser window
     # Create a new instance of the Chrome driver
     driver = webdriver.Chrome(options=chrome_options)
-    # Specify the URL of the webpage
-    url = "https://www.discogs.com/release/4602523"
     # Load the webpage
     driver.get(url)
     # Get the final URL after any dynamic redirection
@@ -350,7 +348,7 @@ if __name__=='__main__':
         print(f'    price (w/o ship) : {offer["price_no_shipping"]}')
         print(f'    min, med, max    : {get_price_stats(item.id, url=item.url)}')
         print(f'    (threshold price : {parse_price(offer["wantlist_item"])})')
-        print(item.url)
+        print(f'    url              : {offer["url"]}')
     
     if len(max_price_missing)>0:
         print(f'  \033[93mprices for {len(max_price_missing)} items are missing:\033[0m')
