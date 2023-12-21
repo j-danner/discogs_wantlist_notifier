@@ -10,6 +10,7 @@ import re
 from tqdm import tqdm
 
 import os
+import math
 
 import functools
 
@@ -127,16 +128,31 @@ class Stats(object):
         return self.__repr__()
 
 
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+
+def get_chrome_driver():
+    #setup selenium
+    chrome_options = Options()
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-extensions")
+    chrome_options.add_argument('--headless')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36')
+    service = Service(executable_path='/usr/bin/chromedriver')
+    #start driver
+    return webdriver.Chrome(service=service, options=chrome_options)
+
+
 def get_redirected_url(url:str) -> str:
     """get redirected link, discogs release pages are redirects, sometimes are not loaded 'fast' enough, so we need to fetch html of redirected url!"""
-    from selenium import webdriver
-    from selenium.webdriver.chrome.service import Service
-    from selenium.webdriver.chrome.options import Options
-    # Configure Chrome options
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")  # Run in headless mode, no browser window
-    # Create a new instance of the Chrome driver
-    driver = webdriver.Chrome(options=chrome_options)
+    driver = get_chrome_driver()
     # Load the webpage
     driver.get(url)
     # Get the final URL after any dynamic redirection
@@ -152,10 +168,23 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
     """get min, med, and max price -- if sold in the past"""
     if url==None:
         url = f'https://www.discogs.com/release/{item_id}'
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
-    page = requests.get(url, headers=headers)
-    soup = BeautifulSoup(page.text, 'html.parser')
+    driver = get_chrome_driver()
+    driver.get(url)
     #get all setter items
+    max_wait = 10.0 # seconds
+    try:
+        myElem = WebDriverWait(driver, max_wait).until(
+            EC.all_of(
+                EC.presence_of_element_located((By.TAG_NAME, 'section')),
+                EC.presence_of_element_located((By.ID, 'release-stats'))
+            )
+        )
+    except TimeoutException:
+        print(f'Loading of page {url=} took more than {max_wait} seconds; aborting...')
+    #parse html
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    driver.quit()
+    #parse stats
     stats = soup.find_all('section', id='release-stats')[0]
     vals = stats.find_all('span', class_='') #should give [rating, min, med, max], if previuosly sold!
     if vals[1].contents[0] == 'Never': #never sold before
@@ -279,20 +308,31 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
         for i in max_price_missing:
             print(f'    \033[93m{i}\033[0m')
         print(f'  \033[93mSet prices online as a note of the form \'max price: xxx\', or restart with argument \'-i\'.\033[0m')
-
-
     print(f'fetching prices for wantlist items (where max price is set)')
+    #scrape marketplace:
+    driver = get_chrome_driver()
     items_on_sale = {}
     for master_id,item in tqdm([i for i in wantlist if i[1].id in max_price]):
         item_id = item.id
         items_on_sale[item_id] = []
         pg = 1
-        last_page = False
-        while not(last_page):
+        num_sale = item.release.marketplace_stats.num_for_sale
+        total_pgs = 0 if type(num_sale)!=int else math.ceil(num_sale / 250)
+        while pg <= total_pgs:
             url = f'https://www.discogs.com/sell/release/{item_id}?sort=price%2Casc&limit=250&ev=rb&page={pg}'
-            headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
-            page = requests.get(url, headers=headers)
-            soup = BeautifulSoup(page.text, 'html.parser')
+            # Load the webpage
+            driver.get(url)
+            max_wait = 10.0 # seconds
+            try:
+                myElem = WebDriverWait(driver, max_wait).until(
+                    EC.all_of(
+                        EC.presence_of_element_located((By.CLASS_NAME, 'shortcut_navigable')),
+                        EC.presence_of_element_located((By.TAG_NAME, 'tr'))
+                    )
+                )
+            except TimeoutException:
+                print(f'Loading of page {url=} took more than {max_wait} seconds; aborting...')
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
             #get all setter items
             offers_on_page = soup.find_all('tr', class_='shortcut_navigable',attrs={'data-release-id':True})
             for offer in offers_on_page:
@@ -300,18 +340,17 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
                 if type(parsed_item) == dict:
                     parsed_item['wantlist_item'] = item
                     items_on_sale[item_id].append( parsed_item )
-            if len(offers_on_page)<250:
-                last_page = True
-            else:
-                pg += 1
-    
+            pg += 1
+    #close the browser
+    driver.quit()
+
+    #filter good offers
     good_offers = []
     for master_id,item in tqdm(wantlist, desc='wantlist', leave=False):
         if(item.id in max_price):
             good_offers += list( 
                     filter(lambda on_sale: on_sale['price'] <= max_price[item.id] and on_sale['media_condition'] >= min_media_condition and on_sale['sleeve_condition'] >= min_sleeve_condition, items_on_sale[item.id])
                     )
-
     return good_offers, max_price_missing
 
 
