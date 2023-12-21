@@ -6,6 +6,6 @@
   "documentation": "https://github.com/j-danner/discogs_wantlist_notifier",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/j-danner/discogs_wantlist_notifier/issues",
-  "requirements": ["discogs_client==2.3.0", "beautifulsoup4==4.11.2", "tqdm==4.64.1", "selenium=4.16.0"],
+  "requirements": ["discogs_client==2.3.0", "beautifulsoup4==4.11.2", "tqdm==4.64.1", "selenium==4.16.0"],
   "version": "0.1.1"
 }
