@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 from tqdm import tqdm
+import cloudscraper
 
 import os
 import math
@@ -128,37 +129,19 @@ class Stats(object):
         return self.__repr__()
 
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-
-def get_chrome_driver():
-    #setup selenium
-    chrome_options = Options()
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument('--headless')
-    chrome_options.add_argument('--disable-gpu')
-    chrome_options.add_argument('--no-sandbox')
-    chrome_options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.86 Safari/537.36')
-    service = Service(executable_path='/usr/bin/chromedriver')
-    #start driver
-    return webdriver.ChromiumEdge(service=service, options=chrome_options)
+def get_scraper():
+    return cloudscraper.create_scraper()
 
 
 def get_redirected_url(url:str) -> str:
     """get redirected link, discogs release pages are redirects, sometimes are not loaded 'fast' enough, so we need to fetch html of redirected url!"""
-    driver = get_chrome_driver()
+    scraper = get_scraper()
     # Load the webpage
-    driver.get(url)
+    scraper.get(url)
     # Get the final URL after any dynamic redirection
-    final_url = driver.current_url
+    final_url = scraper.current_url
     # Close the browser
-    driver.quit()
+    scraper.quit()
     # Print the final URL
     return final_url
 
@@ -168,22 +151,11 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
     """get min, med, and max price -- if sold in the past"""
     if url==None:
         url = f'https://www.discogs.com/release/{item_id}'
-    driver = get_chrome_driver()
-    driver.get(url)
-    #get all setter items
-    max_wait = 10.0 # seconds
-    try:
-        myElem = WebDriverWait(driver, max_wait).until(
-            EC.all_of(
-                EC.presence_of_element_located((By.TAG_NAME, 'section')),
-                EC.presence_of_element_located((By.ID, 'release-stats'))
-            )
-        )
-    except TimeoutException:
-        print(f'Loading of page {url=} took more than {max_wait} seconds; aborting...')
+    scraper = get_scraper()
+    page = scraper.get(url)
     #parse html
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    driver.quit()
+    soup = BeautifulSoup(page.text, 'html.parser')
+    scraper.close()
     #parse stats
     stats = soup.find_all('section', id='release-stats')[0]
     vals = stats.find_all('span', class_='') #should give [rating, min, med, max], if previuosly sold!
@@ -194,22 +166,6 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
     mn,md,mx = [Price(v.contents[0]) for v in vals[1:]  ]
     return Stats( mn, md, mx )
 
-def parse_item_API(item):
-    """parse item using listing_id and API -- slow"""
-    listing_id = item.find_all('a', class_='item_description_title')[0].attrs['href'].split('/')[-1]
-    try:
-        l = d.listing(listing_id)
-    except:
-        return 'unavailable'
-    sleeve_condition = Condition( l.sleeve_condition )
-    media_condition = Condition( l.condition )
-    price_no_shipping = Price( l.data['price']['currency'] + str(l.data['price']['value']) )
-    try:
-        #assumption: item is available in users country iff there is a shipping price
-        price_with_shipping = Price( l.data['shipping_price']['currency'] + str(l.data['shipping_price']['value']) ) + price_no_shipping
-        return {'listing_id': listing_id, 'item_id': item.attrs['data-release-id'], 'media_condition': media_condition, 'sleeve_condition': sleeve_condition, 'price': price_with_shipping, 'price_no_shipping': price_no_shipping}
-    except KeyError:
-        return 'unavailable'
 
 def parse_item_html(item):
     """parse items content using html structure -- fast"""
@@ -310,8 +266,8 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
         print(f'  \033[93mSet prices online as a note of the form \'max price: xxx\', or restart with argument \'-i\'.\033[0m')
     print(f'fetching prices for wantlist items (where max price is set)')
     #scrape marketplace:
-    driver = get_chrome_driver()
     items_on_sale = {}
+    scraper = get_scraper()
     for master_id,item in tqdm([i for i in wantlist if i[1].id in max_price]):
         item_id = item.id
         items_on_sale[item_id] = []
@@ -321,18 +277,9 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
         while pg <= total_pgs:
             url = f'https://www.discogs.com/sell/release/{item_id}?sort=price%2Casc&limit=250&ev=rb&page={pg}'
             # Load the webpage
-            driver.get(url)
-            max_wait = 10.0 # seconds
-            try:
-                myElem = WebDriverWait(driver, max_wait).until(
-                    EC.all_of(
-                        EC.presence_of_element_located((By.CLASS_NAME, 'shortcut_navigable')),
-                        EC.presence_of_element_located((By.TAG_NAME, 'tr'))
-                    )
-                )
-            except TimeoutException:
-                print(f'Loading of page {url=} took more than {max_wait} seconds; aborting...')
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            page = scraper.get(url)
+
+            soup = BeautifulSoup(page.text, 'html.parser')
             #get all setter items
             offers_on_page = soup.find_all('tr', class_='shortcut_navigable',attrs={'data-release-id':True})
             for offer in offers_on_page:
@@ -342,7 +289,7 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
                     items_on_sale[item_id].append( parsed_item )
             pg += 1
     #close the browser
-    driver.quit()
+    scraper.close()
 
     #filter good offers
     good_offers = []
