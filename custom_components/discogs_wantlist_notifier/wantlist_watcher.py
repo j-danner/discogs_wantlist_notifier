@@ -129,8 +129,8 @@ class Stats(object):
         return self.__repr__()
 
 
-def get_scraper():
-    return cloudscraper.create_scraper()
+def get_scraper(**kwargs):
+    return cloudscraper.create_scraper(kwargs)
 
 
 def get_redirected_url(url:str) -> str:
@@ -157,7 +157,11 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
     soup = BeautifulSoup(page.text, 'html.parser')
     scraper.close()
     #parse stats
-    stats = soup.find_all('section', id='release-stats')[0]
+    stats_ = soup.find_all('section', id='release-stats')
+    if len(stats_)==0:
+        print(f'SCRAPE-FAIL in get_price_stats: {url=}')
+        return '<Stats SCRAPE-FAIL>'
+    stats = stats_[0]
     vals = stats.find_all('span', class_='') #should give [rating, min, med, max], if previuosly sold!
     if vals[1].contents[0] == 'Never': #never sold before
         return Stats( '-', '-', '-')
@@ -265,6 +269,7 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
             print(f'    \033[93m{i}\033[0m')
         print(f'  \033[93mSet prices online as a note of the form \'max price: xxx\', or restart with argument \'-i\'.\033[0m')
     print(f'fetching prices for wantlist items (where max price is set)')
+
     #scrape marketplace:
     items_on_sale = {}
     scraper = get_scraper()
