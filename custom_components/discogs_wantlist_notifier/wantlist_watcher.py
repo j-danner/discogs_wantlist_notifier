@@ -80,6 +80,8 @@ class Condition(object):
             self.cond = 'generic'
         elif string=='No Cover' or string=='not provided' or string=='':
             self.cond = 'not provided'
+        elif string=='unknown':
+            self.cond = 'unknown'
         else:
             raise ValueError(f'condition cannot be determined! (for input: {string})')
     def __str__(self):
@@ -109,6 +111,8 @@ class Condition(object):
             return 9
         elif self.cond=='not provided':
             return 10
+        elif self.cond=='unknown':
+            return 11
     def __eq__(self, other):
         if type(self) != type(other):
             raise NotImplemented
@@ -186,10 +190,19 @@ def parse_item_html(item):
     try:
         sleeve_condition = Condition( item.find_all('span', class_='item_sleeve_condition')[0].contents[0] )
     except IndexError:
-        #no sleeve-condition information given!
-        sleeve_condition = Condition('No Cover')
+        #sleeve-condition could not be parsed!
+        sleeve_condition = Condition('unknown')
     #parse media condition
-    media_condition = Condition( item.find_all('span', class_='has-tooltip')[0].parent.contents[0].strip() )
+    try:
+        media_condition = Condition( item.find_all('span', class_='has-tooltip')[0].parent.contents[0].strip() )
+    except IndexError:
+        #try different structure:
+        try:
+            media_condition = Condition( item.find_all('p', class_='item_condition')[0].find_next('span',class_='').contents[0].strip() )
+        except IndexError:
+            #media condition could not be parsed!
+            media_condition = Condition('unknown')
+
     #parse item-offer-url
     url = 'https://www.discogs.com'+ item.find_all('a', class_='item_description_title')[0].attrs['href']
     #return all collected data
@@ -205,16 +218,15 @@ def parse_price(wantlist_item) -> Price or None:
     else:
         return Price( wantlist_item.notes.split(':')[-1] )
 
-def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleeve_condition:Condition, interactive:bool=False) -> None:
+def get_wantlist(token:str, interactive:bool=False) -> tuple[list,list]:
     d = discogs_client.Client('wantlist_watcher/0.1', user_token=token)
     me = d.identity()
 
     #iterate wantlist
     print(f'loading wantlist from discogs')
-    wantlist_list = []
+    wantlist_items = []
     for i in tqdm(range(me.wantlist.pages+1)):
-            wantlist_list.append( me.wantlist.page(i) )
-    wantlist_items = sum(wantlist_list, [])
+        wantlist_items += me.wantlist.page(i)
     #add master_id info to each wantlist_item
     wantlist = []
     for item in wantlist_items:
@@ -232,6 +244,7 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
     max_price = {}
     max_price_missing = []
     #check if threshold prices are complete
+    wantlist_=[]
     for master_id,item in wantlist:
         max_price_item = parse_price(item)
         if max_price_item == None:
@@ -262,6 +275,7 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
                     max_price_missing.append(item)
                     continue
         assert(max_price_item != None)
+        wantlist_.append( (master_id,item,max_price_item) )
         max_price[item.id] = max_price_item
     if len(max_price_missing)>0:
         print(f'  \033[93mprices for {len(max_price_missing)} items are missing:\033[0m')
@@ -270,10 +284,16 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
         print(f'  \033[93mSet prices online as a note of the form \'max price: xxx\', or restart with argument \'-i\'.\033[0m')
     print(f'fetching prices for wantlist items (where max price is set)')
 
+    return wantlist_, max_price_missing
+
+def scrape_good_offers(wantlist:list, min_media_condition:Condition, min_sleeve_condition:Condition) -> list:
+    return list( scrape_good_offers_lazy(wantlist, min_media_condition, min_sleeve_condition) )
+
+def scrape_good_offers_lazy(wantlist:list, min_media_condition:Condition, min_sleeve_condition:Condition):
     #scrape marketplace:
     items_on_sale = {}
     scraper = get_scraper()
-    for master_id,item in tqdm([i for i in wantlist if i[1].id in max_price]):
+    for master_id,item,max_price in tqdm([i for i in wantlist]):
         item_id = item.id
         items_on_sale[item_id] = []
         pg = 1
@@ -291,19 +311,24 @@ def check_offers_in_wantlist(token:str, min_media_condition:Condition, min_sleev
                 parsed_item = parse_item_html(offer)
                 if type(parsed_item) == dict:
                     parsed_item['wantlist_item'] = item
-                    items_on_sale[item_id].append( parsed_item )
+                    #items_on_sale[item_id].append( parsed_item )
+                    if parsed_item['price'] <= max_price and parsed_item['media_condition'] >= min_media_condition and parsed_item['sleeve_condition'] >= min_sleeve_condition:
+                        yield parsed_item
             pg += 1
     #close the browser
     scraper.close()
+    return
 
-    #filter good offers
-    good_offers = []
-    for master_id,item in tqdm(wantlist, desc='wantlist', leave=False):
-        if(item.id in max_price):
-            good_offers += list( 
-                    filter(lambda on_sale: on_sale['price'] <= max_price[item.id] and on_sale['media_condition'] >= min_media_condition and on_sale['sleeve_condition'] >= min_sleeve_condition, items_on_sale[item.id])
-                    )
-    return good_offers, max_price_missing
+    #max_price:dict[int,Price] = {}
+    #for item_id,_,price in wantlist:
+    #    max_price[item_id] = price
+    ##filter good offers
+    #good_offers = []
+    #for master_id,item in tqdm(wantlist, desc='wantlist', leave=False):
+    #    good_offers += list( 
+    #                filter(lambda on_sale: on_sale['price'] <= max_price[item.id] and on_sale['media_condition'] >= min_media_condition and on_sale['sleeve_condition'] >= min_sleeve_condition, items_on_sale[item.id])
+    #            )
+    #return good_offers
 
 
 
@@ -322,16 +347,18 @@ if __name__=='__main__':
     min_sleeve_condition = Condition( args.sleeve_condition )
     interactive = args.interactive
 
-    good_offers, max_price_missing = check_offers_in_wantlist(token, min_media_condition, min_sleeve_condition, interactive=interactive)
+    wantlist, max_price_missing = get_wantlist(token, interactive=interactive)
+    good_offers_lazy = scrape_good_offers_lazy(wantlist, min_media_condition, min_sleeve_condition)
 
-    if len(good_offers)==0:
-        print(f'no good offers found!')
 
+    num_offers = 0
     #print buy_list
-    for offer in good_offers:
+    for offer in good_offers_lazy:
+        num_offers+=1
+        #print good offer
         item = offer['wantlist_item'].release
         print(f'good offer found for:')
-        print(f'    {[a.name for a in item.artists]}   : {item.title}')
+        print(f'    {[a.name for a in item.artists]} -- {item.title}')
         print(f'    with tracklist   : {item.tracklist}')
         print(f'    media condition  : {offer["media_condition"]}')
         print(f'    sleeve condition : {offer["sleeve_condition"]}')
@@ -340,6 +367,9 @@ if __name__=='__main__':
         print(f'    min, med, max    : {get_price_stats(item.id, url=item.url)}')
         print(f'    (threshold price : {parse_price(offer["wantlist_item"])})')
         print(f'    url              : {offer["url"]}')
+        print(f'')
+    if num_offers==0:
+        print(f'no good offers found!')
     
     if len(max_price_missing)>0:
         print(f'  \033[93mprices for {len(max_price_missing)} items are missing:\033[0m')

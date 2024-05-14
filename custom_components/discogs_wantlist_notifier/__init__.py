@@ -32,21 +32,8 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
         min_media_condition = Condition( call.data.get("min_media_condition", 'G') )
         
         _LOGGER.info('Received data')
-        ## (1) check for good offers
-        good_offers, max_price_missing = check_offers_in_wantlist(token, min_media_condition, min_sleeve_condition)
-        
-        _LOGGER.info('offers in wantlist checked')
-
-        ## (2) send notifications to 'device' about good offers
-        for offer in good_offers:
-            item = offer['wantlist_item'].release
-            title = f'Good offer found for {item.artists[0].name} - {item.title}'
-            msg = f'tracklist: { list(i.title for i in item.tracklist) }\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
-            _LOGGER.info(title + ' -- ' + msg)
-            send_notification(title=title, msg=msg, url=offer['url'], device=device)
-        
-        _LOGGER.info('notifications on offers sent')
-
+        ## (1) load wantlist
+        wantlist, max_price_missing = get_wantlist(token)
         if len(max_price_missing) > 0:
             send_notification(
                 title=f'Found items without max price!',
@@ -55,6 +42,18 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 device=device)
         
         _LOGGER.info('notifications on missing prices sent')
+
+        ## (2) check for good offers and send notifications to 'device'
+        good_offers_lazy = scrape_good_offers_lazy(wantlist, min_media_condition, min_sleeve_condition)
+        
+        for offer in good_offers_lazy:
+            item = offer['wantlist_item'].release
+            title = f'Good offer found for {item.artists[0].name} - {item.title}'
+            msg = f'tracklist: { list(i.title for i in item.tracklist) }\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
+            _LOGGER.info(title + ' -- ' + msg)
+            send_notification(title=title, msg=msg, url=offer['url'], device=device)
+        
+        _LOGGER.info('offers in wantlist checked and notifications sent')
 
     # Register our service with Home Assistant.
     hass.services.register(DOMAIN, 'check_offers_in_wantlist', check_offers_in_wantlist_service)
