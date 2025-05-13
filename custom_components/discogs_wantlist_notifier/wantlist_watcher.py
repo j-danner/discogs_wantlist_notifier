@@ -166,13 +166,16 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
         print(f'SCRAPE-FAIL in get_price_stats: {url=}')
         return '<Stats SCRAPE-FAIL>'
     stats = stats_[0]
-    vals = stats.find_all('span', class_='') #should give [rating, min, med, max], if previuosly sold!
-    if vals[1].contents[0] == 'Never': #never sold before
+    vals = stats.find_all(lambda tag: tag.string and '€' in tag.string) #should give [min, med, max], if previuosly sold!
+    if not vals:
         return Stats( '-', '-', '-')
-    elif vals[1].contents[0] == '--': #stats were not loaded! --use redirected url instead!
+    #try parsing - if it fails retry with 'redirected url'!
+    try:
+        mn,md,mx = [Price(v.contents[0]) for v in vals]
+        return Stats( mn, md, mx )
+    except:
+        #stats were probably not yet loaded! re-try with redirected url!
         return get_price_stats(item_id, get_redirected_url(url) )
-    mn,md,mx = [Price(v.contents[0]) for v in vals[1:]  ]
-    return Stats( mn, md, mx )
 
 
 def parse_item_html(item):
@@ -195,13 +198,20 @@ def parse_item_html(item):
     #parse media condition
     try:
         media_condition = Condition( item.find_all('span', class_='has-tooltip')[0].parent.contents[0].strip() )
-    except IndexError:
+    except:
         #try different structure:
         try:
-            media_condition = Condition( item.find_all('p', class_='item_condition')[0].find_next('span',class_='').contents[0].strip() )
-        except IndexError:
-            #media condition could not be parsed!
-            media_condition = Condition('unknown')
+            media_condition = Condition(
+                item.find_all('p', class_='item_condition')[0].find_next('span',class_='').contents[0].strip()
+            )
+        except:
+            try:
+                media_condition = Condition(
+                    item.find(lambda tag: tag.name == 'span' and 'Media Condition' in tag.get_text()).find_next("span").find_next("span").get_text().strip()
+                )
+            except:
+                #media condition parsing failed! (or changed!)
+                media_condition = Condition('unknown')
 
     #parse item-offer-url
     url = 'https://www.discogs.com'+ item.find_all('a', class_='item_description_title')[0].attrs['href']
