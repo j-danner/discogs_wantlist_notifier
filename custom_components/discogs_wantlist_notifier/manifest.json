@@ -6,6 +6,6 @@
   "documentation": "https://github.com/j-danner/discogs_wantlist_notifier",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/j-danner/discogs_wantlist_notifier/issues",
-  "requirements": ["python3_discogs_client>=2.7", "beautifulsoup4==4.11.2", "tqdm==4.66.1", "cloudscraper==1.2.71"],
+  "requirements": ["python3-discogs-client>=2.7", "beautifulsoup4>=4.11.2", "tqdm>=4.66.1", "cloudscraper>=1.2.71", "tenacity>=8.2.0"],
   "version": "0.2.0"
 }

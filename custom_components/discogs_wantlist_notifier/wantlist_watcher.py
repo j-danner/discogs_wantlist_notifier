@@ -12,7 +12,8 @@ import cloudscraper
 
 import os
 import math
-
+import time
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import functools
 
 @functools.total_ordering
@@ -28,11 +29,11 @@ class Price(object):
     def __add__(self, other):
         if type(self)==type(other):
             if self.currency != other.currency:
-                raise NotImplemented
+                raise NotImplementedError
             else:
                 return Price( self.currency + str(self.value + other.value) )
         else:
-            raise NotImplemented
+            raise NotImplementedError
     def __str__(self):
         return self.currency+str(self.value)
     def __repr__(self):
@@ -45,7 +46,7 @@ class Price(object):
     def __gt__(self,other):
         if type(self)==type(other):
             if self.currency != other.currency:
-                raise NotImplemented
+                raise ValueError(f'Cannot compare Prices with different currencies: {self.currency} vs {other.currency}')
             else:
                 return self.value > other.value
         else:
@@ -134,7 +135,12 @@ class Stats(object):
 
 
 def get_scraper(**kwargs):
-    return cloudscraper.create_scraper(kwargs)
+    # Use a Windows Chrome user agent that works with Cloudflare
+    scraper = cloudscraper.create_scraper()
+    scraper.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    })
+    return scraper
 
 
 def get_redirected_url(url:str) -> str:
@@ -171,7 +177,18 @@ def get_price_stats(item_id:int, url:str=None) -> Stats:
         return Stats( '-', '-', '-')
     #try parsing - if it fails retry with 'redirected url'!
     try:
-        mn,md,mx = [Price(v.contents[0]) for v in vals]
+        # Parse each value to extract just the numeric price (handles "about €10" cases)
+        def parse_value(v):
+            text = v.contents[0].strip()
+            # Extract numeric value from text like "about €10" or "€10.99"
+            import re
+            match = re.search(r'[\d,]+\.?\d*', text)
+            if match:
+                value_str = match.group(0).replace(',', '')
+                return Price(text.split(value_str)[0] + value_str)  # Keep original prefix/currency
+            else:
+                return Price(text)
+        mn,md,mx = [parse_value(v) for v in vals]
         return Stats( mn, md, mx )
     except:
         #stats were probably not yet loaded! re-try with redirected url!
@@ -300,34 +317,129 @@ def scrape_good_offers(wantlist:list, min_media_condition:Condition, min_sleeve_
     return list( scrape_good_offers_lazy(wantlist, min_media_condition, min_sleeve_condition) )
 
 def scrape_good_offers_lazy(wantlist:list, min_media_condition:Condition, min_sleeve_condition:Condition):
-    #scrape marketplace:
-    items_on_sale = {}
+    # Scrape marketplace items using cloudscraper with Cloudflare bypass
     scraper = get_scraper()
-    for master_id,item,max_price in tqdm([i for i in wantlist]):
-        item_id = item.id
-        items_on_sale[item_id] = []
-        pg = 1
-        num_sale = item.release.marketplace_stats.num_for_sale
-        total_pgs = 0 if type(num_sale)!=int else math.ceil(num_sale / 250)
-        while pg <= total_pgs:
-            url = f'https://www.discogs.com/sell/release/{item_id}?sort=price%2Casc&limit=250&ev=rb&page={pg}'
-            # Load the webpage
-            page = scraper.get(url)
 
-            soup = BeautifulSoup(page.text, 'html.parser')
-            #get all setter items
-            offers_on_page = soup.find_all('tr', class_='shortcut_navigable',attrs={'data-release-id':True})
-            for offer in offers_on_page:
-                parsed_item = parse_item_html(offer)
-                if type(parsed_item) == dict:
-                    parsed_item['wantlist_item'] = item
-                    #items_on_sale[item_id].append( parsed_item )
-                    if parsed_item['price'] <= max_price and parsed_item['media_condition'] >= min_media_condition and parsed_item['sleeve_condition'] >= min_sleeve_condition:
-                        yield parsed_item
-            pg += 1
-    #close the browser
+    good_offers = []
+    rate_limit_remaining = 25
+    delay = 1.0
+    max_delay = 10.0
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=10, min=30, max=60),
+    )
+    def fetch_page(release_id):
+        """Fetch marketplace page with automatic retries."""
+        response = scraper.get(f'https://www.discogs.com/sell/release/{release_id}')
+        return response
+
+    for master_id, item, _ in wantlist:
+        try:
+            print(f'  Fetching marketplace for: {item.release.title[:50]}')
+
+            # Try to fetch page with tenacity retries
+            try:
+                response = fetch_page(item.id)
+                print(f'    Page fetched: {response.status_code}')
+            except Exception:
+                print(f'    ✗ Cloudflare challenge failed after retries (skipping)')
+                continue
+
+            if response.status_code != 200 or 'Just a moment' in response.text[:200]:
+                print(f'    ✗ Cloudflare challenge')
+                continue
+
+            # Parse items
+            soup = BeautifulSoup(response.text, 'html.parser')
+            items = soup.find_all('tr', class_='shortcut_navigable', attrs={'data-release-id':True})
+
+            if not items:
+                print(f'    ℹ️  No items found')
+                continue
+
+            print(f'    Found {len(items)} items')
+
+            # Parse each item
+            for item_data in items:
+                try:
+                    # Parse price from converted_price span (includes VAT and currency conversion)
+                    converted_price_span = item_data.find('span', class_='converted_price')
+                    if not converted_price_span:
+                        continue
+
+                    price_text = converted_price_span.get_text()
+
+                    # Extract just the price and currency using regex
+                    match = re.search(r'([€$£]?)\s*([\d,]+\.?\d*)', price_text)
+                    if not match:
+                        continue
+
+                    currency = match.group(1) or '€'
+                    value = match.group(2).replace(',', '')
+                    price = Price(f'{currency}{value}')
+
+                    # Parse conditions
+                    try:
+                        sleeve_elements = item_data.find_all('span', class_='item_sleeve_condition')
+                        if sleeve_elements:
+                            sleeve_text = sleeve_elements[0].contents[0].strip()
+                            sleeve_condition = Condition(sleeve_text)
+                        else:
+                            sleeve_condition = Condition('unknown')
+                    except:
+                        sleeve_condition = Condition('unknown')
+
+                    # Parse media condition (try tooltip first)
+                    try:
+                        has_tooltip = item_data.find_all('span', class_='has-tooltip')
+                        if has_tooltip:
+                            media_text = has_tooltip[0].parent.contents[0].strip()
+                            media_condition = Condition(media_text)
+                        else:
+                            media_condition = Condition('unknown')
+                    except:
+                        media_condition = Condition('unknown')
+
+                    # Parse URL
+                    try:
+                        title_elements = item_data.find_all('a', class_='item_description_title')
+                        if title_elements:
+                            url = 'https://www.discogs.com' + title_elements[0].attrs['href']
+                        else:
+                            url = ''
+                    except:
+                        url = ''
+
+                    # Check if meets criteria
+                    if (price <= max_price and
+                        media_condition >= min_media_condition and
+                        sleeve_condition >= min_sleeve_condition):
+
+                        good_offers.append({
+                            'item_id': item.id,
+                            'media_condition': media_condition,
+                            'sleeve_condition': sleeve_condition,
+                            'price': price,
+                            'price_no_shipping': price,
+                            'url': url,
+                            'wantlist_item': item
+                        })
+
+                except Exception as e:
+                    continue
+
+            # Update rate limiting
+            rate_limit_remaining = response.headers.get('X-Discogs-Ratelimit-Remaining', 25)
+            if int(rate_limit_remaining) < 20:
+                delay = min(delay * 2, max_delay)
+
+        except Exception as e:
+            print(f'    ✗ Error: {type(e).__name__}: {str(e)[:100]}')
+            continue
+
     scraper.close()
-    return
+    return good_offers
 
     #max_price:dict[int,Price] = {}
     #for item_id,_,price in wantlist:
