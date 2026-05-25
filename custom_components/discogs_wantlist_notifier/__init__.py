@@ -1,66 +1,83 @@
-"""Example of a custom component exposing a service."""
+"""Discogs Wantlist Notifier integration."""
 from __future__ import annotations
 
 import logging
+from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
-from homeassistant.helpers.typing import ConfigType
 
-from .wantlist_watcher import *
+from .const import (
+    DATA_KEY,
+    DOMAIN,
+    CONF_TOKEN,
+    CONF_MEDIA_CONDITION,
+    CONF_SLEEVE_CONDITION,
+    CONF_NOTIFICATION_ENTITY,
+    DEFAULT_MEDIA_CONDITION,
+    DEFAULT_SLEEVE_CONDITION,
+    SERVICE_CHECK_OFFERS,
+)
+from .data_models import Condition
+from .discogs_client import get_wantlist, parse_price
+from .scraper import scrape_good_offers_lazy, get_scraper
+from .notification import send_notification, format_offer_message, notify_missing_prices
 
-# The domain of your component. Should be equal to the name of your component.
-DOMAIN = "discogs_wantlist_notifier"
 _LOGGER = logging.getLogger(__name__)
 
 
-def setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the sync service example component."""
-    def check_offers_in_wantlist_service(call: ServiceCall) -> None:
-        """Check offers in Discogs Wantlist."""
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Discogs Wantlist Notifier from a config entry."""
+    hass.data.setdefault(DATA_KEY, {})
+    hass.data[DATA_KEY][entry.entry_id] = entry
 
-        #helper function to send notifications to given device, clicking on notification opens given url
-        def send_notification(title:str, msg:str, url:str, device:str) -> None:
-            if url!=None:
-                service_data = {"message": msg, "title": title, "data": {"notification_icon": "mdi:album", "group": "Discogs Wantlist Watcher", "color": "black", "clickAction": url}}
-            else:
-                service_data = {"message": msg, "title": title, "data": {"notification_icon": "mdi:album", "group": "Discogs Wantlist Watcher", "color": "black"}}
-            hass.services.call('notify', f'mobile_app_{device}', service_data, False)
-        
-        device = call.data.get("device_name", None)
-        token = call.data.get("discogs_token", None)
-        min_sleeve_condition = Condition( call.data.get("min_sleeve_condition", 'No Cover') )
-        min_media_condition = Condition( call.data.get("min_media_condition", 'G') )
-        
-        _LOGGER.info('Received data')
-        ## (1) load wantlist
-        wantlist, max_price_missing = get_wantlist(token)
-        if len(max_price_missing) > 0:
+    async def check_offers_service(call: ServiceCall) -> None:
+        """Check offers in Discogs Wantlist and send notifications."""
+        config = entry.data
+        options = entry.options
+
+        token = config[CONF_TOKEN]
+        media_cond = Condition(options.get(CONF_MEDIA_CONDITION, DEFAULT_MEDIA_CONDITION))
+        sleeve_cond = Condition(options.get(CONF_SLEEVE_CONDITION, DEFAULT_SLEEVE_CONDITION))
+        notification_entity = options.get(CONF_NOTIFICATION_ENTITY)
+
+        _LOGGER.info("Checking offers in Discogs Wantlist")
+
+        # (1) Load wantlist via executor (blocking API call)
+        wantlist, max_price_missing = await hass.async_add_executor_job(
+            get_wantlist, token
+        )
+
+        # (2) Notify about missing max prices
+        if max_price_missing:
+            notify_missing_prices(
+                hass, notification_entity, max_price_missing
+            )
+            _LOGGER.info("Notifications sent for %d items missing max price", len(max_price_missing))
+
+        # (3) Scrape marketplace for good offers via executor
+        good_offers = await hass.async_add_executor_job(
+            scrape_good_offers_lazy, wantlist, media_cond, sleeve_cond
+        )
+
+        # (4) Send notifications for each good offer
+        for offer in good_offers:
+            title, msg = format_offer_message(offer)
+            _LOGGER.info("%s -- %s", title, msg)
             send_notification(
-                title=f'Found items without max price!',
-                msg=f'Please set a max-price for the following items: { str(max_price_missing).replace("<","").replace(">","") }',
-                url=None,
-                device=device)
-        
-        _LOGGER.info('notifications on missing prices sent')
+                hass, notification_entity, title, msg, offer.get("url")
+            )
 
-        ## (2) check for good offers and send notifications to 'device'
-        good_offers_lazy = scrape_good_offers_lazy(wantlist, min_media_condition, min_sleeve_condition)
-        
-        for offer in good_offers_lazy:
-            item = offer['wantlist_item'].release
-            title = f'Good offer found for {item.artists[0].name} - {item.title}'
-            msg = f'tracklist: { list(i.title for i in item.tracklist) }\n' + f'media condition: {offer["media_condition"]}, sleeve condition: {offer["sleeve_condition"]}\n' + f'price {offer["price"]} (max-price: {parse_price(offer["wantlist_item"])})\n' + f'Marketplace {str(get_price_stats(item.id, url=item.url)).replace("<","").replace(">","")}'
-            _LOGGER.info(title + ' -- ' + msg)
-            send_notification(title=title, msg=msg, url=offer['url'], device=device)
-        
-        _LOGGER.info('offers in wantlist checked and notifications sent')
+        _LOGGER.info("Finished checking offers in Discogs Wantlist")
 
-    # Register our service with Home Assistant.
-    hass.services.register(DOMAIN, 'check_offers_in_wantlist', check_offers_in_wantlist_service)
+    # Register the service
+    hass.services.async_register(DOMAIN, SERVICE_CHECK_OFFERS, check_offers_service)
 
-    # Return boolean to indicate that initialization was successfully.
     return True
 
 
-
-
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    hass.services.async_remove(DOMAIN, SERVICE_CHECK_OFFERS)
+    hass.data[DATA_KEY].pop(entry.entry_id)
+    return True
