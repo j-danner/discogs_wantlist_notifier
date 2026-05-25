@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
@@ -19,8 +18,8 @@ from .const import (
     SERVICE_CHECK_OFFERS,
 )
 from .data_models import Condition
-from .discogs_client import get_wantlist, parse_price
-from .scraper import scrape_good_offers_lazy, get_scraper
+from .discogs_client import get_wantlist
+from .scraper import scrape_good_offers
 from .notification import send_notification, format_offer_message, notify_missing_prices
 
 _LOGGER = logging.getLogger(__name__)
@@ -49,7 +48,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
 
         # (2) Notify about missing max prices
-        if max_price_missing:
+        if max_price_missing and notification_entity:
             notify_missing_prices(
                 hass, notification_entity, max_price_missing
             )
@@ -57,16 +56,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # (3) Scrape marketplace for good offers via executor
         good_offers = await hass.async_add_executor_job(
-            scrape_good_offers_lazy, wantlist, media_cond, sleeve_cond
+            scrape_good_offers, wantlist, media_cond, sleeve_cond
         )
 
         # (4) Send notifications for each good offer
-        for offer in good_offers:
-            title, msg = format_offer_message(offer)
-            _LOGGER.info("%s -- %s", title, msg)
-            send_notification(
-                hass, notification_entity, title, msg, offer.get("url")
-            )
+        if notification_entity:
+            for offer in good_offers:
+                title, msg = format_offer_message(offer)
+                _LOGGER.info("%s -- %s", title, msg)
+                send_notification(
+                    hass, notification_entity, title, msg, offer.get("url")
+                )
 
         _LOGGER.info("Finished checking offers in Discogs Wantlist")
 
