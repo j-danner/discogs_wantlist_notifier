@@ -1,0 +1,14 @@
+DOMAIN = "discogs_wantlist_notifier"
+DATA_KEY = DOMAIN
+CONF_TOKEN = "discogs_token"
+CONF_MEDIA_CONDITION = "min_media_condition"
+CONF_SLEEVE_CONDITION = "min_sleeve_condition"
+CONF_NOTIFICATION_ENTITY = "notification_entity"
+DEFAULT_MEDIA_CONDITION = "Good (G)"
+DEFAULT_SLEEVE_CONDITION = "No Cover"
+CONDITION_MEDIA_VALUES = ["Mint (M)", "Near Mint (NM)", "Very Good Plus (VG+)", "Very Good (VG)", "Good Plus (G+)", "Good (G)", "Fair (F)", "Poor (P)", "Not Graded"]
+CONDITION_SLEEVE_VALUES = ["Mint (M)", "Near Mint (NM)", "Very Good Plus (VG+)", "Very Good (VG)", "Good Plus (G+)", "Good (G)", "Fair (F)", "Poor (P)", "Not Graded", "Generic", "No Cover"]
+ERROR_INVALID_TOKEN = "Invalid Discogs token. Please check your token and try again."
+ERROR_INVALID_CONDITION = "Invalid condition value: '{value}'."
+ERROR_NOTIFICATION_ENTITY = "Notification entity '{entity}' not found."
+SERVICE_CHECK_OFFERS = "check_offers_in_wantlist"
