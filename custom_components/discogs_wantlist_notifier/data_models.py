@@ -1,17 +1,17 @@
+"""Data models for the Discogs Wantlist Notifier component."""
 import functools
 import re
 
 
 @functools.total_ordering
-class Price(object):
-    currency: str = "€"
-    value: float = 0.0
+class Price:
 
     def __init__(self, string):
         price_tuple = re.split(r"(\d+)", string.strip())
         self.currency = price_tuple[0]
         value_str = "".join(price_tuple[1:]).replace(",", "")
-        assert value_str != ""
+        if not value_str:
+            raise ValueError(f"Cannot parse price from string: {string!r}")
         self.value = float(value_str)
 
     def __add__(self, other):
@@ -19,7 +19,10 @@ class Price(object):
             raise NotImplementedError
         if self.currency != other.currency:
             raise NotImplementedError
-        return Price(self.currency + str(self.value + other.value))
+        new_price = Price.__new__(Price)
+        new_price.currency = self.currency
+        new_price.value = self.value + other.value
+        return new_price
 
     def __str__(self):
         return f"{self.currency}{self.value}"
@@ -46,8 +49,7 @@ class Price(object):
 
 
 @functools.total_ordering
-class Condition(object):
-    cond: str = "P"
+class Condition:
 
     _MAP_TO_INTERNAL: dict[str, str] = {
         "Mint (M)": "M",
@@ -104,7 +106,7 @@ class Condition(object):
         return self.cond
 
     def __repr__(self):
-        return chr(60) + "Condition " + self.cond + chr(62)
+        return "<Condition " + self.cond + ">"
 
     def __eq__(self, other):
         if type(self) != type(other):
@@ -113,10 +115,12 @@ class Condition(object):
             return self.cond == other.cond
 
     def __gt__(self, other):
+        if type(self) != type(other):
+            return NotImplemented
         return int(self) < int(other)
 
 
-class Stats(object):
+class Stats:
     def __init__(self, mn: Price, md: Price, mx: Price):
         self.mn = mn
         self.md = md
@@ -124,7 +128,7 @@ class Stats(object):
 
     def __repr__(self):
         inner = "min=" + str(self.mn) + " med=" + str(self.md) + " max=" + str(self.mx)
-        return chr(60) + "Stats " + inner + chr(62)
+        return "<Stats " + inner + ">"
 
     def __str__(self):
         return self.__repr__()
