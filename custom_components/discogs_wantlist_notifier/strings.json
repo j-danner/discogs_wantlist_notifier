@@ -1,0 +1,33 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Configure Discogs Wantlist Notifier",
+                "description": "Enter your Discogs Personal Access Token",
+                "data": {
+                    "discogs_token": "Discogs Token"
+                }
+            }
+        },
+        "error": {
+            "invalid_token": "Invalid Discogs token. Please check your token and try again.",
+            "cannot_connect": "Could not connect to Discogs. Please try again."
+        },
+        "abort": {
+            "already_configured": "This integration is already configured."
+        }
+    },
+    "options": {
+        "step": {
+            "init": {
+                "title": "Configure Discogs Wantlist Notifier",
+                "description": "Set your notification preferences",
+                "data": {
+                    "min_media_condition": "Minimum Media Condition",
+                    "min_sleeve_condition": "Minimum Sleeve Condition",
+                    "notification_entity": "Notification Target"
+                }
+            }
+        }
+    }
+}
