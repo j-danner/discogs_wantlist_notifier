@@ -10,12 +10,26 @@ _LOGGER = logging.getLogger(__name__)
 
 
 def parse_price(wantlist_item) -> Price | None:
-    if wantlist_item.notes == "":
+    """Parse max price from a wantlist item's notes field.
+
+    The notes field format is "max price: €xx.xx". Returns None when
+    the notes field is empty, missing, or doesn't contain a valid price.
+    """
+    if not wantlist_item.notes:
         return None
-    return Price(wantlist_item.notes.split(":")[-1])
+    price_str = wantlist_item.notes.split(":")[-1].strip()
+    if not price_str or not (price_str[0].isdigit() or price_str[0] in "€$£"):
+        return None
+    return Price(price_str)
 
 
 def get_wantlist(token: str) -> tuple[list, list]:
+    """Fetch the authenticated user's Discogs wantlist.
+
+    Returns a tuple of (items_with_prices, items_missing_prices).
+    Items without prices are deduplicated by master ID, falling back
+    to sibling items with prices before being flagged as missing.
+    """
     d = discogs_client.Client("wantlist_watcher/0.1", user_token=token)
     me = d.identity()
 
@@ -69,6 +83,7 @@ def get_wantlist(token: str) -> tuple[list, list]:
 
 
 def validate_token(token: str) -> bool:
+    """Verify a Discogs user token works by calling identity()."""
     try:
         d = discogs_client.Client("wantlist_watcher/0.1", user_token=token)
         d.identity()
