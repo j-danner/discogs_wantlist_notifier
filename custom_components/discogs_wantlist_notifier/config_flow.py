@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 import voluptuous as vol
 
 from homeassistant import config_entries
@@ -19,12 +21,16 @@ from .const import (
 )
 from .discogs_client import validate_token
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class DiscogsWantlistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     async def async_step_user(self, user_input=None) -> FlowResult:
         errors = {}
+        await self.async_set_unique_id(DOMAIN)
+        self._abort_if_unique_id_configured()
         if user_input is not None:
             token = user_input[CONF_TOKEN]
             try:
@@ -34,6 +40,7 @@ class DiscogsWantlistConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 if not valid:
                     errors["base"] = "invalid_token"
             except Exception:
+                _LOGGER.exception("Unexpected error during token validation")
                 errors["base"] = "cannot_connect"
             if not errors:
                 return self.async_create_entry(
