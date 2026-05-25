@@ -1,16 +1,18 @@
 """HTML parsing functions for Discogs marketplace data."""
+import logging
 import re
 
 from bs4 import BeautifulSoup, Tag
 
 from .data_models import Condition, Price, Stats
 
+_LOGGER = logging.getLogger(__name__)
 PRICE_REGEX = re.compile(r"([€$£]?)\s*([\d,]+\.?\d*)")
 
 
 def parse_marketplace_item(item_data: Tag) -> dict | None:
     if "unavailable" in item_data.attrs.get("class", []):
-        return "unavailable"
+        return None
 
     converted_price_span = item_data.find("span", class_="converted_price")
     if not converted_price_span:
@@ -32,7 +34,7 @@ def parse_marketplace_item(item_data: Tag) -> dict | None:
             sleeve_condition = Condition(sleeve_text)
         else:
             sleeve_condition = Condition("unknown")
-    except Exception:
+    except (AttributeError, IndexError, TypeError, ValueError):
         sleeve_condition = Condition("unknown")
 
     try:
@@ -42,7 +44,7 @@ def parse_marketplace_item(item_data: Tag) -> dict | None:
             media_condition = Condition(media_text)
         else:
             media_condition = Condition("unknown")
-    except Exception:
+    except (AttributeError, IndexError, TypeError, ValueError):
         media_condition = Condition("unknown")
 
     try:
@@ -51,7 +53,7 @@ def parse_marketplace_item(item_data: Tag) -> dict | None:
             url = "https://www.discogs.com" + title_elements[0].attrs["href"]
         else:
             url = ""
-    except Exception:
+    except (AttributeError, IndexError, TypeError):
         url = ""
 
     return {
@@ -59,19 +61,23 @@ def parse_marketplace_item(item_data: Tag) -> dict | None:
         "media_condition": media_condition,
         "sleeve_condition": sleeve_condition,
         "price": price,
-        "price_no_shipping": price,
+        "price_no_shipping": price,  # Note: price_no_shipping kept for API compatibility
         "url": url,
     }
 
 
-def get_price_stats(item_id: int, scraper, url: str | None = None) -> Stats:
+def get_price_stats(item_id: int, scraper, url: str | None = None, _depth: int = 0) -> Stats:
+    if _depth > 2:
+        _LOGGER.error("Failed to get price stats for %s after redirects", item_id)
+        return Stats(Price("€0"), Price("€0"), Price("€0"))
     if url is None:
         url = f"https://www.discogs.com/release/{item_id}"
     page = scraper.get(url)
     soup = BeautifulSoup(page.text, "html.parser")
     stats_section = soup.find("section", id="release-stats")
     if not stats_section:
-        return '<Stats SCRAPE-FAIL>'
+        _LOGGER.warning("No stats section found for release %s", item_id)
+        return Stats(Price("€0"), Price("€0"), Price("€0"))
     vals = stats_section.find_all(lambda tag: tag.string and "€" in tag.string)
     if not vals:
         return Stats("-", "-", "-")
@@ -87,8 +93,9 @@ def get_price_stats(item_id: int, scraper, url: str | None = None) -> Stats:
 
         mn, md, mx = [parse_value(v) for v in vals]
         return Stats(mn, md, mx)
-    except Exception:
-        return get_price_stats(item_id, scraper, get_redirected_url(url, scraper))
+    except (AttributeError, IndexError, TypeError, ValueError):
+        redirected_url = get_redirected_url(url, scraper)
+        return get_price_stats(item_id, scraper, redirected_url, _depth=_depth + 1)
 
 
 def get_redirected_url(url: str, scraper) -> str:
