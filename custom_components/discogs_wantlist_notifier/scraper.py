@@ -1,17 +1,17 @@
 """Marketplace scraping logic for Discogs wantlist notifier."""
 import logging
+import time
 
 import cloudscraper
 from bs4 import BeautifulSoup
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential
 
-from .data_models import Condition, Price
 from .parser import parse_marketplace_item
 
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_scraper(**kwargs):
+def get_scraper():
     scraper = cloudscraper.create_scraper()
     scraper.headers.update({
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -34,7 +34,7 @@ def scrape_good_offers_lazy(wantlist, min_media, min_sleeve):
         response = scraper.get(f"https://www.discogs.com/sell/release/{release_id}")
         return response
 
-    for master_id, item, max_price in wantlist:
+    for _, item, max_price in wantlist:
         try:
             _LOGGER.debug("Fetching marketplace for: %s", item.release.title[:50])
 
@@ -85,6 +85,8 @@ def scrape_good_offers_lazy(wantlist, min_media, min_sleeve):
             rate_limit_remaining = response.headers.get("X-Discogs-Ratelimit-Remaining", 25)
             if int(rate_limit_remaining) < 20:
                 delay = min(delay * 2, max_delay)
+
+            time.sleep(delay)
 
         except Exception as e:
             _LOGGER.warning("Error processing release %s: %s: %s", item.id, type(e).__name__, str(e)[:100])
