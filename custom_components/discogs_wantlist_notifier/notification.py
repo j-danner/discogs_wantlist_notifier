@@ -24,7 +24,7 @@ def send_notification(
     if url is not None:
         service_data["data"]["clickAction"] = url
 
-    hass.services.call("notify", notification_entity, service_data, False)
+    hass.services.async_call("notify", notification_entity, service_data, False)
 
 
 def format_offer_message(offer: dict) -> tuple[str, str]:
