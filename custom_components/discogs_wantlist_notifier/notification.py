@@ -1,11 +1,7 @@
 """Notification service for Discogs Wantlist Notifier."""
 from __future__ import annotations
 
-import logging
-
 from homeassistant.core import HomeAssistant
-
-_LOGGER = logging.getLogger(__name__)
 
 
 def send_notification(
@@ -48,7 +44,6 @@ def notify_missing_prices(
     hass: HomeAssistant,
     notification_entity: str,
     missing_items: list,
-    device: str,
 ) -> None:
     """Notify user that some wantlist items are missing max prices."""
     missing_releases = "\n".join(
